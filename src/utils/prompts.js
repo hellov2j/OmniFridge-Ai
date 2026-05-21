@@ -22,7 +22,7 @@ export const RECIPE_SUGGESTION_PROMPT = (items) => {
 
   return `You are a creative chef AI. I have these ingredients in my fridge: ${itemList}.
 
-Suggest 4-5 recipes I can make using ONLY these ingredients (plus basic pantry staples like salt, pepper, oil, butter, sugar, flour, garlic, onion, and common spices).
+Suggest 3 recipes I can make using ONLY these ingredients (plus basic pantry staples like salt, pepper, oil, butter, sugar, flour, garlic, onion, and common spices).
 
 Return ONLY a valid JSON array (no markdown, no code fences, no explanation) with this exact format:
 [

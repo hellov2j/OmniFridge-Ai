@@ -55,13 +55,33 @@ function getDemoDetections() {
   return shuffled.slice(0, count);
 }
 
+// ── Retry with exponential backoff ──────────────────────────────────
+async function withRetry(fn, maxRetries = 3) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const msg = err.message || '';
+      const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('rate') || msg.includes('RESOURCE_EXHAUSTED');
+      if (!isRateLimit || attempt === maxRetries) throw err;
+      // Exponential backoff: 2s, 4s, 8s
+      const delay = Math.pow(2, attempt + 1) * 1000;
+      console.warn(`Rate limited. Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
 // ── Error formatting ────────────────────────────────────────────────
 function formatError(err) {
   const msg = err.message || '';
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate')) {
+  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate') || msg.includes('RESOURCE_EXHAUSTED')) {
     const retryMatch = msg.match(/retry in ([\d.]+)s/i);
     const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
-    return `Rate limit reached — wait ~${seconds}s or enable Demo Mode in Settings.`;
+    return `Rate limit reached after retries — wait ~${seconds}s or enable Demo Mode in Settings.`;
   }
   if (msg.includes('API key')) {
     return 'Invalid API key. Check your key in Settings.';
@@ -115,9 +135,11 @@ export function useGemini() {
         },
       };
 
-      const result = await model.generateContent([FOOD_DETECTION_PROMPT, imagePart]);
-      const response = await result.response;
-      const text = response.text();
+      const text = await withRetry(async () => {
+        const result = await model.generateContent([FOOD_DETECTION_PROMPT, imagePart]);
+        const response = await result.response;
+        return response.text();
+      });
 
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
@@ -163,9 +185,11 @@ export function useGemini() {
       const model = getClient(apiKey).getGenerativeModel({ model: getModel() });
 
       const prompt = RECIPE_SUGGESTION_PROMPT(items);
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await withRetry(async () => {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
 
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
