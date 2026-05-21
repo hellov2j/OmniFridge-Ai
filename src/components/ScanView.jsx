@@ -30,7 +30,7 @@ export default function ScanView() {
   const captureRetryRef = useRef(0);
 
   const { addItem, addItems } = useInventory();
-  const { detectFood, detecting: geminiDetecting, error: geminiError, clearError: clearGeminiError } = useGemini();
+  const { detectFood, detecting: geminiDetecting, error: geminiError, retryStatus: geminiRetryStatus, clearError: clearGeminiError } = useGemini();
   const {
     detectFromImage: localDetect,
     detecting: localDetecting,
@@ -424,17 +424,23 @@ export default function ScanView() {
         {/* Right: Detected Items */}
         <div className="detected-section glass-panel">
           {detecting || modelLoading ? (
-            <div className="detecting-overlay">
+          <div className="detecting-overlay">
               <div className="detecting-spinner" />
               <div className="detecting-text">
-                {modelLoading ? 'Loading AI model (~5MB)...' : 'Analyzing image with AI...'}
+                {modelLoading
+                  ? 'Loading AI model (~5MB)...'
+                  : (detectionMode === 'cloud' && geminiRetryStatus)
+                    ? geminiRetryStatus
+                    : 'Analyzing image with AI...'}
               </div>
               <div className="detecting-text text-muted" style={{ marginTop: '4px', fontSize: '0.8rem' }}>
                 {modelLoading
                   ? 'First load only — cached for next time'
-                  : detectionMode === 'local'
-                    ? 'Running TensorFlow.js locally'
-                    : 'Identifying food items'}
+                  : (detectionMode === 'cloud' && geminiRetryStatus)
+                    ? 'Auto-switching models to avoid rate limits'
+                    : detectionMode === 'local'
+                      ? 'Running TensorFlow.js locally'
+                      : 'Identifying food items'}
               </div>
             </div>
           ) : detectedItems.length > 0 ? (

@@ -5,7 +5,7 @@ import './RecipesView.css';
 
 export default function RecipesView() {
   const { getNonExpiredItems } = useInventory();
-  const { suggestRecipes, suggesting, error, clearError } = useGemini();
+  const { suggestRecipes, suggesting, error, retryStatus, clearError } = useGemini();
   const [recipes, setRecipes] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -48,8 +48,14 @@ export default function RecipesView() {
             <div className="recipe-loading-dot" />
             <div className="recipe-loading-dot" />
           </div>
-          <div className="recipe-loading-text">Generating recipes with AI...</div>
-          <div className="recipe-loading-subtext">Analyzing your ingredients and finding the best combinations</div>
+          <div className="recipe-loading-text">
+            {retryStatus || 'Generating recipes with AI...'}
+          </div>
+          <div className="recipe-loading-subtext">
+            {retryStatus
+              ? 'Auto-switching models to avoid rate limits'
+              : 'Analyzing your ingredients and finding the best combinations'}
+          </div>
         </div>
       ) : recipes.length > 0 ? (
         <>

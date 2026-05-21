@@ -10,6 +10,13 @@ const isDemoMode = () => localStorage.getItem('smartfridge_demo_mode') !== 'fals
 let _cachedClient = null;
 let _cachedKey = null;
 
+// Models to try in order — each has a SEPARATE quota pool
+const FALLBACK_MODELS = [
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+
 // ── Demo / mock data (works without API) ────────────────────────────
 const DEMO_DETECTIONS = [
   { name: 'Milk', category: 'dairy', estimatedShelfLifeDays: 7, suggestedUnit: 'liters' },
@@ -49,41 +56,25 @@ const DEMO_RECIPES = [
 ];
 
 function getDemoDetections() {
-  // Return 3-5 random items to simulate varied detection
   const count = 3 + Math.floor(Math.random() * 3);
   const shuffled = [...DEMO_DETECTIONS].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }
 
-// ── Retry with exponential backoff ──────────────────────────────────
-async function withRetry(fn, maxRetries = 3) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      const msg = err.message || '';
-      const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('rate') || msg.includes('RESOURCE_EXHAUSTED');
-      if (!isRateLimit || attempt === maxRetries) throw err;
-      // Exponential backoff: 2s, 4s, 8s
-      const delay = Math.pow(2, attempt + 1) * 1000;
-      console.warn(`Rate limited. Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  throw lastError;
+// ── Rate limit detection ────────────────────────────────────────────
+function isRateLimitError(err) {
+  const msg = (err.message || '') + (err.status || '');
+  return msg.includes('429') || msg.includes('quota') || msg.includes('rate')
+    || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Too Many Requests');
 }
 
 // ── Error formatting ────────────────────────────────────────────────
 function formatError(err) {
   const msg = err.message || '';
-  if (msg.includes('429') || msg.includes('quota') || msg.includes('rate') || msg.includes('RESOURCE_EXHAUSTED')) {
-    const retryMatch = msg.match(/retry in ([\d.]+)s/i);
-    const seconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 60;
-    return `Rate limit reached after retries — wait ~${seconds}s or enable Demo Mode in Settings.`;
+  if (isRateLimitError(err)) {
+    return 'All models are rate-limited. Please wait 1-2 minutes and try again, or enable Demo Mode in Settings.';
   }
-  if (msg.includes('API key')) {
+  if (msg.includes('API key') || msg.includes('API_KEY_INVALID')) {
     return 'Invalid API key. Check your key in Settings.';
   }
   if (msg.includes('not found') || msg.includes('404')) {
@@ -100,18 +91,69 @@ function getClient(apiKey) {
   return _cachedClient;
 }
 
+// ── Smart retry: tries fallback models, then waits and retries ──────
+async function callWithFallback(apiKey, contentArgs, onStatus) {
+  const preferredModel = getModel();
+
+  // Build ordered model list: preferred first, then others
+  const models = [preferredModel, ...FALLBACK_MODELS.filter(m => m !== preferredModel)];
+  const client = getClient(apiKey);
+
+  // Phase 1: Try each model once
+  for (const modelName of models) {
+    try {
+      onStatus?.(`Trying ${modelName}...`);
+      const model = client.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(contentArgs);
+      const response = await result.response;
+      return response.text();
+    } catch (err) {
+      if (isRateLimitError(err)) {
+        console.warn(`${modelName} rate-limited, trying next model...`);
+        continue;
+      }
+      throw err; // Non-rate-limit error, don't retry
+    }
+  }
+
+  // Phase 2: All models failed — wait and retry preferred model
+  const delays = [15, 30, 60]; // seconds
+  for (let i = 0; i < delays.length; i++) {
+    const waitSec = delays[i];
+    onStatus?.(`All models rate-limited. Waiting ${waitSec}s before retry...`);
+    await new Promise(r => setTimeout(r, waitSec * 1000));
+
+    try {
+      onStatus?.(`Retrying ${preferredModel}... (attempt ${i + 2})`);
+      const model = client.getGenerativeModel({ model: preferredModel });
+      const result = await model.generateContent(contentArgs);
+      const response = await result.response;
+      return response.text();
+    } catch (err) {
+      if (isRateLimitError(err) && i < delays.length - 1) {
+        console.warn(`Still rate-limited after ${waitSec}s wait`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error('RESOURCE_EXHAUSTED');
+}
+
 // ── Hook ────────────────────────────────────────────────────────────
 export function useGemini() {
   const [detecting, setDetecting] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState(null);
+  const [retryStatus, setRetryStatus] = useState(null);
 
   const detectFood = useCallback(async (imageBase64) => {
-    // ── Demo mode: return mock data instantly ──
     if (isDemoMode()) {
       setDetecting(true);
       setError(null);
-      await new Promise(r => setTimeout(r, 1200)); // Simulate processing
+      setRetryStatus(null);
+      await new Promise(r => setTimeout(r, 1200));
       setDetecting(false);
       return getDemoDetections();
     }
@@ -124,10 +166,9 @@ export function useGemini() {
 
     setDetecting(true);
     setError(null);
+    setRetryStatus(null);
 
     try {
-      const model = getClient(apiKey).getGenerativeModel({ model: getModel() });
-
       const imagePart = {
         inlineData: {
           data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
@@ -135,11 +176,11 @@ export function useGemini() {
         },
       };
 
-      const text = await withRetry(async () => {
-        const result = await model.generateContent([FOOD_DETECTION_PROMPT, imagePart]);
-        const response = await result.response;
-        return response.text();
-      });
+      const text = await callWithFallback(
+        apiKey,
+        [FOOD_DETECTION_PROMPT, imagePart],
+        (status) => setRetryStatus(status)
+      );
 
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
@@ -154,14 +195,15 @@ export function useGemini() {
       return [];
     } finally {
       setDetecting(false);
+      setRetryStatus(null);
     }
   }, []);
 
   const suggestRecipes = useCallback(async (items) => {
-    // ── Demo mode ──
     if (isDemoMode()) {
       setSuggesting(true);
       setError(null);
+      setRetryStatus(null);
       await new Promise(r => setTimeout(r, 1500));
       setSuggesting(false);
       return DEMO_RECIPES;
@@ -180,16 +222,15 @@ export function useGemini() {
 
     setSuggesting(true);
     setError(null);
+    setRetryStatus(null);
 
     try {
-      const model = getClient(apiKey).getGenerativeModel({ model: getModel() });
-
       const prompt = RECIPE_SUGGESTION_PROMPT(items);
-      const text = await withRetry(async () => {
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
-      });
+      const text = await callWithFallback(
+        apiKey,
+        prompt,
+        (status) => setRetryStatus(status)
+      );
 
       let cleaned = text.trim();
       if (cleaned.startsWith('```')) {
@@ -204,6 +245,7 @@ export function useGemini() {
       return [];
     } finally {
       setSuggesting(false);
+      setRetryStatus(null);
     }
   }, []);
 
@@ -213,6 +255,7 @@ export function useGemini() {
     detecting,
     suggesting,
     error,
+    retryStatus,
     clearError: () => setError(null),
   };
 }
