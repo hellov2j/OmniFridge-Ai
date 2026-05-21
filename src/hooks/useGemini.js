@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { FOOD_DETECTION_PROMPT, RECIPE_SUGGESTION_PROMPT } from '../utils/prompts';
 
 const getApiKey = () => localStorage.getItem('smartfridge_gemini_key') || '';
-const getModel = () => localStorage.getItem('smartfridge_gemini_model') || 'gemini-2.0-flash-lite';
+const getModel = () => localStorage.getItem('smartfridge_gemini_model') || 'gemini-3.1-flash';
 const isDemoMode = () => localStorage.getItem('smartfridge_demo_mode') !== 'false';
 
 // Cached Gemini client (avoids re-instantiation per call)
@@ -12,6 +12,7 @@ let _cachedKey = null;
 
 // Models to try in order — each has a SEPARATE quota pool
 const FALLBACK_MODELS = [
+  'gemini-3.1-flash',
   'gemini-2.0-flash-lite',
   'gemini-2.0-flash',
   'gemini-1.5-flash',

@@ -5,21 +5,22 @@ import './SettingsView.css';
 export default function SettingsView() {
   const { clearAll, items } = useInventory();
   const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash-lite');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash');
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
 
   const MODELS = [
-    { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', desc: 'Fastest, lowest quota usage (recommended)' },
+    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash', desc: 'Latest model, best quality (recommended)' },
+    { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', desc: 'Fastest, lowest quota usage' },
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Fast & capable, higher quota usage' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Separate quota pool, good fallback' },
   ];
 
   useEffect(() => {
     const stored = localStorage.getItem('smartfridge_gemini_key') || '';
-    const storedModel = localStorage.getItem('smartfridge_gemini_model') || 'gemini-2.0-flash-lite';
+    const storedModel = localStorage.getItem('smartfridge_gemini_model') || 'gemini-3.1-flash';
     setApiKey(stored);
     setSelectedModel(storedModel);
     setDemoMode(localStorage.getItem('smartfridge_demo_mode') !== 'false');
