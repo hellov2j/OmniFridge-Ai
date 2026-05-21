@@ -1,0 +1,142 @@
+.settings-view {
+  animation: fadeIn 0.4s ease forwards;
+  max-width: 600px;
+}
+
+.settings-view h1 {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.settings-view > p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-xl);
+}
+
+.settings-section {
+  padding: var(--space-xl);
+  margin-bottom: var(--space-lg);
+}
+
+.settings-section h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  font-size: 1.1rem;
+}
+
+.settings-section .form-group {
+  margin-bottom: var(--space-md);
+}
+
+.settings-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.settings-hint a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.settings-hint a:hover {
+  text-decoration: underline;
+}
+
+.api-key-input-wrapper {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.api-key-input-wrapper .input {
+  flex: 1;
+}
+
+.settings-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  margin-top: var(--space-md);
+}
+
+.settings-status.connected {
+  background: var(--status-fresh-bg);
+  color: var(--status-fresh);
+}
+
+.settings-status.disconnected {
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+}
+
+.notification-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-sm);
+}
+
+.notification-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-toggle-label {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.notification-toggle-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background var(--transition-base);
+  border: none;
+  padding: 0;
+}
+
+.toggle-switch.active {
+  background: var(--accent-primary);
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform var(--transition-base);
+}
+
+.toggle-switch.active::after {
+  transform: translateX(20px);
+}
+
+.settings-danger-zone {
+  border-color: rgba(239, 68, 68, 0.2) !important;
+}
+
+.settings-danger-zone h3 {
+  color: var(--status-critical);
+}

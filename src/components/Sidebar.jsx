@@ -1,0 +1,58 @@
+import { useMemo } from 'react';
+import { useInventory } from '../context/InventoryContext';
+import './Sidebar.css';
+
+const navItems = [
+  { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+  { id: 'scan', icon: '📷', label: 'Scan & Add' },
+  { id: 'inventory', icon: '🧊', label: 'Inventory' },
+  { id: 'recipes', icon: '🍳', label: 'Recipes' },
+];
+
+export default function Sidebar({ activeView, onViewChange }) {
+  const { items, getExpiringItems, getExpiredItems } = useInventory();
+  const expiringCount = useMemo(
+    () => getExpiringItems(2).length + getExpiredItems().length,
+    [items]
+  );
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-logo">
+        <div className="sidebar-logo-icon">🧊</div>
+        <div className="sidebar-logo-text">
+          <span className="sidebar-logo-title">SmartFridge</span>
+          <span className="sidebar-logo-subtitle">AI Powered</span>
+        </div>
+      </div>
+
+      <nav className="sidebar-nav">
+        {navItems.map(item => (
+          <button
+            key={item.id}
+            className={`sidebar-nav-item ${activeView === item.id ? 'active' : ''}`}
+            aria-current={activeView === item.id ? 'page' : undefined}
+            onClick={() => onViewChange(item.id)}
+          >
+            <span className="sidebar-nav-icon">{item.icon}</span>
+            <span className="sidebar-nav-label">{item.label}</span>
+            {item.id === 'inventory' && expiringCount > 0 && (
+              <span className="sidebar-nav-badge">{expiringCount}</span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <div className="sidebar-footer">
+        <button
+          className={`sidebar-nav-item ${activeView === 'settings' ? 'active' : ''}`}
+          aria-current={activeView === 'settings' ? 'page' : undefined}
+          onClick={() => onViewChange('settings')}
+        >
+          <span className="sidebar-nav-icon">⚙️</span>
+          <span className="sidebar-nav-label">Settings</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
