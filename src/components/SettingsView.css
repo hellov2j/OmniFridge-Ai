@@ -108,9 +108,22 @@
   background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   cursor: pointer;
-  transition: background var(--transition-base);
+  transition: background var(--transition-hover), transform var(--transition-hover), box-shadow var(--transition-hover);
   border: none;
   padding: 0;
+}
+
+.toggle-switch:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.toggle-switch.active:hover {
+  box-shadow: 0 0 12px var(--accent-primary-glow);
+}
+
+.toggle-switch:active {
+  transform: scale(0.95);
 }
 
 .toggle-switch.active {
@@ -126,7 +139,7 @@
   height: 20px;
   background: white;
   border-radius: 50%;
-  transition: transform var(--transition-base);
+  transition: transform var(--transition-hover);
 }
 
 .toggle-switch.active::after {

@@ -45,12 +45,17 @@
   font-family: var(--font-family);
   font-size: 0.8rem;
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-hover);
 }
 
 .detection-mode-btn:hover {
   background: var(--glass-bg-hover);
   color: var(--text-primary);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.detection-mode-btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .detection-mode-btn.active {
@@ -94,7 +99,7 @@
   font-family: var(--font-family);
   font-size: 0.875rem;
   font-weight: 500;
-  transition: all var(--transition-base);
+  transition: all var(--transition-hover);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -103,6 +108,12 @@
 .scan-tab:hover {
   background: var(--glass-bg-hover);
   color: var(--text-primary);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), 0 0 8px rgba(0, 212, 255, 0.1);
+}
+
+.scan-tab:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .scan-tab.active {
@@ -179,7 +190,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: all var(--transition-hover);
   text-align: center;
   min-height: 280px;
 }
@@ -188,6 +199,8 @@
 .upload-zone.drag-over {
   border-color: var(--accent-primary);
   background: var(--accent-primary-dim);
+  transform: scale(1.015);
+  box-shadow: 0 8px 24px rgba(0, 212, 255, 0.05);
 }
 
 .upload-zone-icon {
@@ -363,6 +376,28 @@
   gap: var(--space-sm);
 }
 
+/* Camera Switch Button */
+.btn-switch-camera {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-hover);
+}
+
+.btn-switch-camera:hover {
+  background: var(--accent-primary-dim);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: scale(1.03);
+}
+
+.btn-switch-camera:active {
+  transform: scale(0.97);
+}
+
 @media (max-width: 768px) {
   .scan-content {
     grid-template-columns: 1fr;
@@ -374,5 +409,201 @@
 
   .scan-tabs {
     flex-wrap: wrap;
+  }
+
+  .scan-tab {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ── Price Badge ────────────────────────────── */
+.price-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  background: var(--status-fresh-bg);
+  color: var(--status-fresh);
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ── Barcode Scanner ────────────────────────── */
+.barcode-section {
+  padding: var(--space-xl);
+}
+
+.barcode-scanner-area {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.barcode-scanner-area video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.barcode-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  justify-content: center;
+}
+
+.barcode-loading span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* ── Barcode Product Card ──────────────────── */
+.barcode-product-card {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  animation: fadeIn 0.4s ease forwards;
+  transition: transform var(--transition-hover), box-shadow var(--transition-hover), border-color var(--transition-hover);
+}
+
+.barcode-product-card:hover {
+  transform: translateY(-3px) scale(1.005);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), var(--shadow-glow);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.barcode-product-header {
+  display: flex;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.barcode-product-image {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: white;
+  padding: 4px;
+  flex-shrink: 0;
+}
+
+.barcode-product-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.barcode-product-name {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+}
+
+.barcode-product-brand {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.barcode-product-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Nutri-Score ───────────────────────────── */
+.nutri-score {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.nutri-score-a { background: #038141; color: white; }
+.nutri-score-b { background: #85bb2f; color: white; }
+.nutri-score-c { background: #fecb02; color: #333; }
+.nutri-score-d { background: #ee8100; color: white; }
+.nutri-score-e { background: #e63e11; color: white; }
+
+/* ── Nutrition Grid ────────────────────────── */
+.barcode-nutrition {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--glass-border);
+  margin-bottom: var(--space-lg);
+}
+
+.barcode-nutrition-title {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-md);
+}
+
+.barcode-nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+}
+
+.barcode-nutrition-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.barcode-nutrition-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+
+.barcode-nutrition-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Barcode Product Actions ──────────────── */
+.barcode-product-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 768px) {
+  .barcode-product-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .barcode-nutrition-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .barcode-product-actions {
+    flex-direction: column;
+  }
+
+  .barcode-product-actions .btn {
+    width: 100%;
   }
 }

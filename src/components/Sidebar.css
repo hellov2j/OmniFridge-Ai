@@ -4,13 +4,13 @@
   top: 0;
   width: var(--sidebar-width);
   height: 100vh;
-  background: rgba(10, 14, 26, 0.95);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   padding: var(--space-lg) 0;
   z-index: 100;
-  transition: width var(--transition-base);
+  transition: width var(--transition-base), background var(--transition-base);
   backdrop-filter: blur(20px);
 }
 
@@ -70,7 +70,7 @@
   padding: 12px var(--space-md);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: all var(--transition-hover);
   color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 500;
@@ -92,13 +92,20 @@
   height: 100%;
   background: var(--accent-primary);
   transform: scaleY(0);
-  transition: transform var(--transition-base);
+  transition: transform var(--transition-hover);
   border-radius: 0 2px 2px 0;
 }
 
 .sidebar-nav-item:hover {
   background: var(--glass-bg);
   color: var(--text-primary);
+  transform: translateX(4px);
+}
+
+@media (max-width: 768px) {
+  .sidebar-nav-item:hover {
+    transform: translateY(-2px);
+  }
 }
 
 .sidebar-nav-item.active {
@@ -138,11 +145,19 @@
   text-align: center;
 }
 
+.sidebar-nav-badge--shopping {
+  background: var(--accent-primary-dim);
+  color: var(--accent-primary);
+}
+
 .sidebar-footer {
   padding: 0 var(--space-sm);
   border-top: 1px solid var(--glass-border);
   padding-top: var(--space-md);
   margin-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* Mobile bottom bar */

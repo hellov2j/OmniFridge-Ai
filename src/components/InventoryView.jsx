@@ -5,7 +5,7 @@ import { CATEGORY_ICONS, UNITS } from '../utils/constants';
 import './InventoryView.css';
 
 export default function InventoryView() {
-  const { items, updateItem, deleteItem, clearAll, getCategories } = useInventory();
+  const { items, updateItem, deleteItem, deleteItemAndShop, clearAll, getCategories } = useInventory();
   const categories = getCategories();
 
   const [search, setSearch] = useState('');
@@ -103,7 +103,12 @@ export default function InventoryView() {
   };
 
   const handleDelete = async (id, name) => {
-    if (window.confirm(`Remove "${name}" from your fridge?`)) {
+    const action = window.confirm(
+      `Remove "${name}" from your fridge and add it to your shopping list?\n\nClick OK to remove & add to shopping list.\nClick Cancel to just remove without adding.`
+    );
+    if (action) {
+      await deleteItemAndShop(id, 'consumed');
+    } else if (window.confirm(`Just remove "${name}" without adding to shopping list?`)) {
       await deleteItem(id);
     }
   };

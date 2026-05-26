@@ -6,11 +6,12 @@ const navItems = [
   { id: 'dashboard', icon: '📊', label: 'Dashboard' },
   { id: 'scan', icon: '📷', label: 'Scan & Add' },
   { id: 'inventory', icon: '🧊', label: 'Inventory' },
+  { id: 'shopping', icon: '🛒', label: 'Shopping List' },
   { id: 'recipes', icon: '🍳', label: 'Recipes' },
 ];
 
-export default function Sidebar({ activeView, onViewChange }) {
-  const { items, getExpiringItems, getExpiredItems } = useInventory();
+export default function Sidebar({ activeView, onViewChange, theme, onThemeToggle }) {
+  const { items, getExpiringItems, getExpiredItems, unpurchasedCount } = useInventory();
   const expiringCount = useMemo(
     () => getExpiringItems(2).length + getExpiredItems().length,
     [items]
@@ -39,11 +40,22 @@ export default function Sidebar({ activeView, onViewChange }) {
             {item.id === 'inventory' && expiringCount > 0 && (
               <span className="sidebar-nav-badge">{expiringCount}</span>
             )}
+            {item.id === 'shopping' && unpurchasedCount > 0 && (
+              <span className="sidebar-nav-badge sidebar-nav-badge--shopping">{unpurchasedCount}</span>
+            )}
           </button>
         ))}
       </nav>
 
       <div className="sidebar-footer">
+        <button
+          className="sidebar-nav-item theme-toggle-btn"
+          onClick={onThemeToggle}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          <span className="sidebar-nav-icon">{theme === 'dark' ? '☀️' : '🌙'}</span>
+          <span className="sidebar-nav-label">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
         <button
           className={`sidebar-nav-item ${activeView === 'settings' ? 'active' : ''}`}
           aria-current={activeView === 'settings' ? 'page' : undefined}

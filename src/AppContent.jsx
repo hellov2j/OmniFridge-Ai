@@ -4,13 +4,27 @@ import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import ScanView from './components/ScanView';
 import InventoryView from './components/InventoryView';
+import ShoppingListView from './components/ShoppingListView';
 import RecipesView from './components/RecipesView';
 import SettingsView from './components/SettingsView';
+import VoiceAssistant from './components/VoiceAssistant';
 
 export default function AppContent() {
   const [activeView, setActiveView] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
   const toastTimersRef = useRef(new Map());
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('smartfridge_theme') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('smartfridge_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   const addToast = useCallback((message, type = 'info') => {
     const id = crypto.randomUUID();
@@ -53,10 +67,12 @@ export default function AppContent() {
         return <ScanView />;
       case 'inventory':
         return <InventoryView />;
+      case 'shopping':
+        return <ShoppingListView />;
       case 'recipes':
         return <RecipesView />;
       case 'settings':
-        return <SettingsView />;
+        return <SettingsView theme={theme} onThemeToggle={toggleTheme} />;
       default:
         return <DashboardView onNavigate={setActiveView} />;
     }
@@ -64,7 +80,7 @@ export default function AppContent() {
 
   return (
     <div className="app-layout">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} theme={theme} onThemeToggle={toggleTheme} />
       <main className="main-content">
         {renderView()}
       </main>
@@ -86,6 +102,8 @@ export default function AppContent() {
           ))}
         </div>
       )}
+      {/* Voice Assistant FAB */}
+      <VoiceAssistant />
     </div>
   );
 }

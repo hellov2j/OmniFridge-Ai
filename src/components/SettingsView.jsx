@@ -2,27 +2,35 @@ import { useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import './SettingsView.css';
 
-export default function SettingsView() {
+export default function SettingsView({ theme, onThemeToggle }) {
   const { clearAll, items } = useInventory();
   const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
 
   const MODELS = [
-    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash', desc: 'Latest model, best quality (recommended)' },
-    { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', desc: 'Fastest, lowest quota usage' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Fast & capable, higher quota usage' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Separate quota pool, good fallback' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & capable (recommended)' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Fastest, lowest quota usage' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Most capable, higher quota usage' },
   ];
+
+  // Deprecated model IDs that need migration
+  const isDeprecatedModel = (m) => m.startsWith('gemini-1.') || m.startsWith('gemini-2.0') || m === 'gemini-3.1-flash';
 
   useEffect(() => {
     const stored = localStorage.getItem('smartfridge_gemini_key') || '';
-    const storedModel = localStorage.getItem('smartfridge_gemini_model') || 'gemini-3.1-flash';
+    const storedModel = localStorage.getItem('smartfridge_gemini_model') || 'gemini-2.5-flash';
+    // Auto-upgrade deprecated model names
+    if (isDeprecatedModel(storedModel)) {
+      localStorage.setItem('smartfridge_gemini_model', 'gemini-2.5-flash');
+      setSelectedModel('gemini-2.5-flash');
+    } else {
+      setSelectedModel(storedModel);
+    }
     setApiKey(stored);
-    setSelectedModel(storedModel);
     setDemoMode(localStorage.getItem('smartfridge_demo_mode') !== 'false');
     setNotificationsEnabled('Notification' in window && Notification.permission === 'granted');
   }, []);
@@ -57,6 +65,24 @@ export default function SettingsView() {
     <div className="settings-view">
       <h1>Settings</h1>
       <p>Configure your SmartFridge application</p>
+
+      {/* Appearance */}
+      <div className="settings-section glass-panel">
+        <h3>🎨 Appearance</h3>
+        <div className="notification-toggle">
+          <div className="notification-toggle-info">
+            <span className="notification-toggle-label">Light Mode</span>
+            <span className="notification-toggle-hint">
+              Toggle between the FrostByte (dark) and CrystalFrost (light) themes
+            </span>
+          </div>
+          <button
+            className={`toggle-switch ${theme === 'light' ? 'active' : ''}`}
+            onClick={onThemeToggle}
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          />
+        </div>
+      </div>
 
       {/* Demo Mode */}
       <div className="settings-section glass-panel" style={{ borderColor: demoMode ? 'var(--accent-primary)' : undefined }}>

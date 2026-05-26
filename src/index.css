@@ -69,9 +69,57 @@
   --transition-fast: 150ms ease;
   --transition-base: 250ms ease;
   --transition-slow: 400ms ease;
+  --transition-hover: 200ms ease-in-out;
 
   /* Font */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Theme specific defaults */
+  --sidebar-bg: rgba(10, 14, 26, 0.95);
+  --voice-panel-bg: rgba(15, 20, 37, 0.95);
+  --voice-item-bg-add: rgba(34, 197, 94, 0.08);
+  --voice-item-bg-consume: rgba(245, 158, 11, 0.08);
+  --voice-item-bg-remove: rgba(239, 68, 68, 0.08);
+}
+
+[data-theme='light'] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-grid: rgba(14, 165, 233, 0.03);
+
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-bg-hover: rgba(255, 255, 255, 0.85);
+
+  --accent-primary: #0ea5e9;
+  --accent-primary-glow: rgba(14, 165, 233, 0.2);
+  --accent-primary-dim: rgba(14, 165, 233, 0.08);
+  --accent-secondary: #8b5cf6;
+  --accent-secondary-glow: rgba(139, 92, 246, 0.2);
+  --accent-secondary-dim: rgba(139, 92, 246, 0.08);
+
+  --status-fresh: #16a34a;
+  --status-fresh-bg: rgba(22, 163, 74, 0.08);
+  --status-warning: #d97706;
+  --status-warning-bg: rgba(217, 119, 6, 0.08);
+  --status-critical: #dc2626;
+  --status-critical-bg: rgba(220, 38, 38, 0.08);
+  --status-expired: #4b5563;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --shadow-glow: 0 0 20px rgba(14, 165, 233, 0.12);
+  --shadow-card: 0 4px 20px rgba(15, 23, 42, 0.05);
+  --shadow-elevated: 0 10px 30px rgba(15, 23, 42, 0.1);
+
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --voice-panel-bg: rgba(255, 255, 255, 0.96);
+  --voice-item-bg-add: rgba(22, 163, 74, 0.05);
+  --voice-item-bg-consume: rgba(217, 119, 6, 0.05);
+  --voice-item-bg-remove: rgba(220, 38, 38, 0.05);
 }
 
 /* --- Reset & Base --- */
@@ -96,6 +144,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   line-height: 1.6;
+  transition: background var(--transition-base), color var(--transition-base);
 }
 
 /* Subtle grid background */
@@ -146,12 +195,18 @@ body::before {
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  transition: background var(--transition-base), border-color var(--transition-base);
+  transition: 
+    background var(--transition-hover), 
+    border-color var(--transition-hover), 
+    transform var(--transition-hover), 
+    box-shadow var(--transition-hover);
 }
 
 .glass-panel:hover {
   background: var(--glass-bg-hover);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), 0 0 15px rgba(0, 212, 255, 0.04);
 }
 
 /* --- Layout --- */
@@ -196,9 +251,22 @@ h4 { font-size: 1.1rem; }
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: 
+    background var(--transition-hover), 
+    color var(--transition-hover), 
+    border-color var(--transition-hover), 
+    transform var(--transition-hover), 
+    box-shadow var(--transition-hover);
   text-decoration: none;
   white-space: nowrap;
+}
+
+.btn:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-primary {
@@ -210,11 +278,6 @@ h4 { font-size: 1.1rem; }
 .btn-primary:hover {
   background: color-mix(in srgb, var(--accent-primary) 85%, white);
   box-shadow: 0 0 24px var(--accent-primary-glow);
-  transform: translateY(-1px);
-}
-
-.btn-primary:active {
-  transform: translateY(0);
 }
 
 .btn-secondary {
@@ -226,7 +289,6 @@ h4 { font-size: 1.1rem; }
 .btn-secondary:hover {
   background: rgba(168, 85, 247, 0.25);
   box-shadow: 0 0 16px var(--accent-secondary-glow);
-  transform: translateY(-1px);
 }
 
 .btn-ghost {
@@ -249,6 +311,7 @@ h4 { font-size: 1.1rem; }
 
 .btn-danger:hover {
   background: rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.25);
 }
 
 .btn-sm {
@@ -309,6 +372,11 @@ select.input {
   background-position: right 12px center;
   padding-right: 32px;
   cursor: pointer;
+}
+
+select.input option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .form-group {

@@ -30,7 +30,11 @@
 .recipe-card {
   padding: 0;
   overflow: hidden;
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  transition: 
+    transform var(--transition-hover), 
+    box-shadow var(--transition-hover), 
+    background var(--transition-hover), 
+    border-color var(--transition-hover);
   animation: staggerFadeIn 0.4s ease forwards;
   opacity: 0;
   cursor: default;
@@ -43,8 +47,9 @@
 .recipe-card:nth-child(5) { animation-delay: 0.5s; }
 
 .recipe-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-elevated);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), var(--shadow-glow);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .recipe-card-header {

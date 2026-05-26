@@ -1,9 +1,16 @@
 import { useState, useCallback } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { FOOD_DETECTION_PROMPT, RECIPE_SUGGESTION_PROMPT } from '../utils/prompts';
+import { FOOD_DETECTION_PROMPT, RECIPE_SUGGESTION_PROMPT, RECEIPT_PARSE_PROMPT, VOICE_COMMAND_PROMPT } from '../utils/prompts';
 
 const getApiKey = () => localStorage.getItem('smartfridge_gemini_key') || '';
-const getModel = () => localStorage.getItem('smartfridge_gemini_model') || 'gemini-3.1-flash';
+const getModel = () => {
+  const m = localStorage.getItem('smartfridge_gemini_model');
+  // Migrate any deprecated model names to the current default
+  if (!m || m.startsWith('gemini-1.') || m.startsWith('gemini-2.') || m === 'gemini-3.1-flash') {
+    return 'gemini-2.5-flash';
+  }
+  return m;
+};
 const isDemoMode = () => localStorage.getItem('smartfridge_demo_mode') !== 'false';
 
 // Cached Gemini client (avoids re-instantiation per call)
@@ -12,10 +19,9 @@ let _cachedKey = null;
 
 // Models to try in order — each has a SEPARATE quota pool
 const FALLBACK_MODELS = [
-  'gemini-3.1-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
 ];
 
 // ── Demo / mock data (works without API) ────────────────────────────
@@ -62,11 +68,23 @@ function getDemoDetections() {
   return shuffled.slice(0, count);
 }
 
+const DEMO_RECEIPT_ITEMS = [
+  { name: 'Amul Toned Milk 1L', category: 'dairy', quantity: 2, unit: 'packs', price: 54, estimatedShelfLifeDays: 5 },
+  { name: 'Brown Bread', category: 'grain', quantity: 1, unit: 'packs', price: 45, estimatedShelfLifeDays: 4 },
+  { name: 'Farm Eggs (12 pack)', category: 'dairy', quantity: 1, unit: 'dozen', price: 84, estimatedShelfLifeDays: 14 },
+  { name: 'Onions', category: 'vegetable', quantity: 1, unit: 'kg', price: 35, estimatedShelfLifeDays: 14 },
+  { name: 'Tomatoes', category: 'vegetable', quantity: 0.5, unit: 'kg', price: 25, estimatedShelfLifeDays: 5 },
+  { name: 'Cheddar Cheese Slices', category: 'dairy', quantity: 1, unit: 'packs', price: 120, estimatedShelfLifeDays: 30 },
+  { name: 'Coca-Cola 750ml', category: 'beverage', quantity: 2, unit: 'bottles', price: 40, estimatedShelfLifeDays: 180 },
+  { name: 'Chicken Breast', category: 'meat', quantity: 0.5, unit: 'kg', price: 180, estimatedShelfLifeDays: 2 },
+];
+
 // ── Rate limit detection ────────────────────────────────────────────
 function isRateLimitError(err) {
   const msg = (err.message || '') + (err.status || '');
-  return msg.includes('429') || msg.includes('quota') || msg.includes('rate')
-    || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Too Many Requests');
+  const lowerMsg = msg.toLowerCase();
+  return msg.includes('429') || lowerMsg.includes('quota') || lowerMsg.includes('rate limit')
+    || msg.includes('RESOURCE_EXHAUSTED') || lowerMsg.includes('too many requests');
 }
 
 // ── Error formatting ────────────────────────────────────────────────
@@ -92,7 +110,7 @@ function getClient(apiKey) {
   return _cachedClient;
 }
 
-// ── Smart retry: tries fallback models, then waits and retries ──────
+// ── Smart retry: tries fallback models with cooldown, then a single delayed retry ──
 async function callWithFallback(apiKey, contentArgs, onStatus) {
   const preferredModel = getModel();
 
@@ -100,8 +118,12 @@ async function callWithFallback(apiKey, contentArgs, onStatus) {
   const models = [preferredModel, ...FALLBACK_MODELS.filter(m => m !== preferredModel)];
   const client = getClient(apiKey);
 
-  // Phase 1: Try each model once
-  for (const modelName of models) {
+  let lastError = null;
+
+  // Phase 1: Try each model once, with a brief cooldown between attempts
+  //          so we don't slam all quotas in under a second
+  for (let i = 0; i < models.length; i++) {
+    const modelName = models[i];
     try {
       onStatus?.(`Trying ${modelName}...`);
       const model = client.getGenerativeModel({ model: modelName });
@@ -109,43 +131,41 @@ async function callWithFallback(apiKey, contentArgs, onStatus) {
       const response = await result.response;
       return response.text();
     } catch (err) {
+      lastError = err;
       if (isRateLimitError(err)) {
         console.warn(`${modelName} rate-limited, trying next model...`);
+        // Wait 2s before trying the next model to avoid rapid-fire quota burn
+        if (i < models.length - 1) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
         continue;
       }
       throw err; // Non-rate-limit error, don't retry
     }
   }
 
-  // Phase 2: All models failed — wait and retry preferred model
-  const delays = [15, 30, 60]; // seconds
-  for (let i = 0; i < delays.length; i++) {
-    const waitSec = delays[i];
-    onStatus?.(`All models rate-limited. Waiting ${waitSec}s before retry...`);
-    await new Promise(r => setTimeout(r, waitSec * 1000));
+  // Phase 2: All models failed — wait once and retry the preferred model
+  onStatus?.(`All models rate-limited. Waiting 30s before retry...`);
+  await new Promise(r => setTimeout(r, 30000));
 
-    try {
-      onStatus?.(`Retrying ${preferredModel}... (attempt ${i + 2})`);
-      const model = client.getGenerativeModel({ model: preferredModel });
-      const result = await model.generateContent(contentArgs);
-      const response = await result.response;
-      return response.text();
-    } catch (err) {
-      if (isRateLimitError(err) && i < delays.length - 1) {
-        console.warn(`Still rate-limited after ${waitSec}s wait`);
-        continue;
-      }
-      throw err;
-    }
+  try {
+    onStatus?.(`Retrying ${preferredModel}...`);
+    const model = client.getGenerativeModel({ model: preferredModel });
+    const result = await model.generateContent(contentArgs);
+    const response = await result.response;
+    return response.text();
+  } catch (err) {
+    // If still rate-limited, give up with a clear message
+    throw lastError || err;
   }
-
-  throw new Error('RESOURCE_EXHAUSTED');
 }
 
 // ── Hook ────────────────────────────────────────────────────────────
 export function useGemini() {
   const [detecting, setDetecting] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [parsingReceipt, setParsingReceipt] = useState(false);
+  const [processingVoice, setProcessingVoice] = useState(false);
   const [error, setError] = useState(null);
   const [retryStatus, setRetryStatus] = useState(null);
 
@@ -184,8 +204,11 @@ export function useGemini() {
       );
 
       let cleaned = text.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      if (match) {
+        cleaned = match[0];
+      } else {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
       }
 
       const parsed = JSON.parse(cleaned);
@@ -234,8 +257,11 @@ export function useGemini() {
       );
 
       let cleaned = text.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      if (match) {
+        cleaned = match[0];
+      } else {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
       }
 
       const parsed = JSON.parse(cleaned);
@@ -250,11 +276,128 @@ export function useGemini() {
     }
   }, []);
 
+  const parseReceipt = useCallback(async (imageBase64) => {
+    if (isDemoMode()) {
+      setParsingReceipt(true);
+      setError(null);
+      setRetryStatus(null);
+      await new Promise(r => setTimeout(r, 1800));
+      setParsingReceipt(false);
+      return DEMO_RECEIPT_ITEMS;
+    }
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setError('Set your Gemini API key in Settings, or enable Demo Mode.');
+      return [];
+    }
+
+    setParsingReceipt(true);
+    setError(null);
+    setRetryStatus(null);
+
+    try {
+      const imagePart = {
+        inlineData: {
+          data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+          mimeType: 'image/jpeg',
+        },
+      };
+
+      const text = await callWithFallback(
+        apiKey,
+        [RECEIPT_PARSE_PROMPT, imagePart],
+        (status) => setRetryStatus(status)
+      );
+
+      let cleaned = text.trim();
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      if (match) {
+        cleaned = match[0];
+      } else {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      }
+
+      const parsed = JSON.parse(cleaned);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.error('Receipt parse error:', err);
+      setError(formatError(err));
+      return [];
+    } finally {
+      setParsingReceipt(false);
+      setRetryStatus(null);
+    }
+  }, []);
+
+  const parseVoiceCommand = useCallback(async (transcript, currentInventory) => {
+    if (isDemoMode()) {
+      setProcessingVoice(true);
+      setError(null);
+      setRetryStatus(null);
+      await new Promise(r => setTimeout(r, 1200));
+      setProcessingVoice(false);
+      // Demo: parse simple patterns
+      const demoActions = [];
+      const lower = transcript.toLowerCase();
+      if (lower.includes('add') || lower.includes('bought') || lower.includes('got')) {
+        demoActions.push({ action: 'add', name: 'Milk', category: 'dairy', quantity: 1, unit: 'liters', estimatedShelfLifeDays: 5, matchedItemId: null });
+      }
+      if (lower.includes('ate') || lower.includes('used') || lower.includes('drank')) {
+        demoActions.push({ action: 'consume', name: 'Apple', category: 'fruit', quantity: 1, unit: 'pieces', estimatedShelfLifeDays: null, matchedItemId: null });
+      }
+      return demoActions.length ? demoActions : [{ action: 'add', name: 'Banana', category: 'fruit', quantity: 2, unit: 'pieces', estimatedShelfLifeDays: 5, matchedItemId: null }];
+    }
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setError('Set your Gemini API key in Settings, or enable Demo Mode.');
+      return [];
+    }
+
+    setProcessingVoice(true);
+    setError(null);
+    setRetryStatus(null);
+
+    try {
+      const prompt = VOICE_COMMAND_PROMPT(currentInventory);
+      const fullPrompt = `${prompt}\n\nUser said: "${transcript}"`;
+
+      const text = await callWithFallback(
+        apiKey,
+        fullPrompt,
+        (status) => setRetryStatus(status)
+      );
+
+      let cleaned = text.trim();
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      if (match) {
+        cleaned = match[0];
+      } else {
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      }
+
+      const parsed = JSON.parse(cleaned);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.error('Voice command parse error:', err);
+      setError(formatError(err));
+      return [];
+    } finally {
+      setProcessingVoice(false);
+      setRetryStatus(null);
+    }
+  }, []);
+
   return {
     detectFood,
     suggestRecipes,
+    parseReceipt,
+    parseVoiceCommand,
     detecting,
     suggesting,
+    parsingReceipt,
+    processingVoice,
     error,
     retryStatus,
     clearError: () => setError(null),

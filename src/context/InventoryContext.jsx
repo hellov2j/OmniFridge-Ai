@@ -5,6 +5,7 @@ const InventoryContext = createContext(null);
 
 export function InventoryProvider({ children }) {
   const [items, setItems] = useState([]);
+  const [shoppingList, setShoppingList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const loadItems = useCallback(async () => {
@@ -18,9 +19,19 @@ export function InventoryProvider({ children }) {
     }
   }, []);
 
+  const loadShoppingList = useCallback(async () => {
+    try {
+      const all = await db.shoppingList.toArray();
+      setShoppingList(all);
+    } catch (err) {
+      console.error('Failed to load shopping list:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadItems();
-  }, [loadItems]);
+    loadShoppingList();
+  }, [loadItems, loadShoppingList]);
 
   const addItem = async (item) => {
     try {
@@ -70,6 +81,30 @@ export function InventoryProvider({ children }) {
     }
   };
 
+  // Delete item AND add it to the shopping list
+  const deleteItemAndShop = async (id, reason = 'consumed') => {
+    try {
+      const item = await db.foodItems.get(id);
+      if (item) {
+        await db.shoppingList.add({
+          name: item.name,
+          category: item.category || 'other',
+          quantity: item.quantity || 1,
+          unit: item.unit || 'pieces',
+          addedDate: new Date().toISOString(),
+          source: reason,
+          purchased: 0,
+        });
+      }
+      await db.foodItems.delete(id);
+      await loadItems();
+      await loadShoppingList();
+    } catch (err) {
+      console.error('Failed to delete item and add to shopping list:', err);
+      throw err;
+    }
+  };
+
   const clearAll = async () => {
     try {
       await db.foodItems.clear();
@@ -79,6 +114,71 @@ export function InventoryProvider({ children }) {
       throw err;
     }
   };
+
+  // ── Shopping List Methods ──────────────────────────────────────────
+
+  const addShoppingItem = async (item) => {
+    try {
+      await db.shoppingList.add({
+        name: item.name,
+        category: item.category || 'other',
+        quantity: item.quantity || 1,
+        unit: item.unit || 'pieces',
+        addedDate: new Date().toISOString(),
+        source: 'manual',
+        purchased: 0,
+      });
+      await loadShoppingList();
+    } catch (err) {
+      console.error('Failed to add shopping item:', err);
+      throw err;
+    }
+  };
+
+  const toggleShoppingItem = async (id) => {
+    try {
+      const item = await db.shoppingList.get(id);
+      if (item) {
+        await db.shoppingList.update(id, { purchased: item.purchased ? 0 : 1 });
+        await loadShoppingList();
+      }
+    } catch (err) {
+      console.error('Failed to toggle shopping item:', err);
+      throw err;
+    }
+  };
+
+  const deleteShoppingItem = async (id) => {
+    try {
+      await db.shoppingList.delete(id);
+      await loadShoppingList();
+    } catch (err) {
+      console.error('Failed to delete shopping item:', err);
+      throw err;
+    }
+  };
+
+  const clearPurchasedItems = async () => {
+    try {
+      await db.shoppingList.where('purchased').equals(1).delete();
+      await loadShoppingList();
+    } catch (err) {
+      console.error('Failed to clear purchased items:', err);
+      throw err;
+    }
+  };
+
+  const clearShoppingList = async () => {
+    try {
+      await db.shoppingList.clear();
+      await loadShoppingList();
+    } catch (err) {
+      console.error('Failed to clear shopping list:', err);
+      throw err;
+    }
+  };
+
+  // ── Computed Helpers ───────────────────────────────────────────────
 
   const getExpiringItems = (daysThreshold = 2) => {
     const now = new Date();
@@ -116,6 +216,11 @@ export function InventoryProvider({ children }) {
     return Array.from(cats).sort();
   };
 
+  const unpurchasedCount = useMemo(
+    () => shoppingList.filter(i => !i.purchased).length,
+    [shoppingList]
+  );
+
   const value = useMemo(() => ({
     items,
     loading,
@@ -123,6 +228,7 @@ export function InventoryProvider({ children }) {
     addItems,
     updateItem,
     deleteItem,
+    deleteItemAndShop,
     clearAll,
     getExpiringItems,
     getExpiredItems,
@@ -130,7 +236,15 @@ export function InventoryProvider({ children }) {
     getNonExpiredItems,
     getCategories,
     refreshItems: loadItems,
-  }), [items, loading]);
+    // Shopping list
+    shoppingList,
+    unpurchasedCount,
+    addShoppingItem,
+    toggleShoppingItem,
+    deleteShoppingItem,
+    clearPurchasedItems,
+    clearShoppingList,
+  }), [items, loading, shoppingList, unpurchasedCount]);
 
   return (
     <InventoryContext.Provider value={value}>

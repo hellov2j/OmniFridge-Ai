@@ -44,3 +44,65 @@ Rules:
 - Be practical and realistic
 - DO NOT include any text outside the JSON array`;
 };
+
+export const RECEIPT_PARSE_PROMPT = `You are a grocery receipt parser AI. Analyze this image of a grocery receipt and extract every food/grocery item listed.
+
+Return ONLY a valid JSON array (no markdown, no code fences, no explanation) with objects in this exact format:
+[
+  {
+    "name": "Item Name",
+    "category": "dairy|vegetable|fruit|meat|grain|beverage|condiment|snack|other",
+    "quantity": 1,
+    "unit": "pieces|liters|kg|grams|packs|bottles|cans|dozen",
+    "price": 0.00,
+    "estimatedShelfLifeDays": 7
+  }
+]
+
+Rules:
+- Extract the product name as clearly as possible (e.g., "Amul Milk 1L" not just "AMUL MLK")
+- If the receipt shows a quantity (like 2x or x2), use that as the quantity
+- Map each item to the most appropriate category
+- If a price is visible, include it; otherwise use 0
+- Estimate a realistic shelf life for each item
+- Skip non-food items like bags, taxes, discounts, totals
+- Return an empty array [] if no food items are found
+- DO NOT include any text outside the JSON array`;
+
+export const VOICE_COMMAND_PROMPT = (currentInventory) => {
+  const inventoryList = currentInventory.length
+    ? currentInventory.map(i => `• ${i.name} (${i.quantity} ${i.unit}, id:${i.id})`).join('\n')
+    : '(empty fridge)';
+
+  return `You are a smart fridge voice-command parser. The user spoke a natural-language sentence about their food. Parse it into structured actions.
+
+Current fridge inventory:
+${inventoryList}
+
+Return ONLY a valid JSON array (no markdown, no code fences, no explanation). Each object must follow this format:
+[
+  {
+    "action": "add" | "remove" | "consume",
+    "name": "Item Name",
+    "category": "dairy|vegetable|fruit|meat|grain|beverage|condiment|snack|other",
+    "quantity": 1,
+    "unit": "pieces|liters|kg|grams|packs|bottles|cans|dozen",
+    "estimatedShelfLifeDays": 7,
+    "matchedItemId": null
+  }
+]
+
+Rules:
+- "add" = user bought / added items to the fridge
+- "consume" = user ate / used / finished items (reduce quantity or remove)
+- "remove" = user threw away / discarded items
+- For "consume" and "remove", try to match the item name to an existing inventory item and set "matchedItemId" to its id
+- If the user says "ate one apple" and there are 3 apples, set action="consume", quantity=1
+- If quantity is not mentioned, assume 1
+- Infer the most logical category and unit
+- estimatedShelfLifeDays is only needed for "add" actions
+- Be flexible with phrasing: "got", "picked up", "bought" → add; "ate", "used", "drank", "had" → consume; "threw away", "tossed", "discarded" → remove
+- Handle multiple items in a single sentence
+- Return an empty array [] if the sentence has nothing to do with food
+- DO NOT include any text outside the JSON array`;
+};

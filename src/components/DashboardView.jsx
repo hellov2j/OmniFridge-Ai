@@ -34,6 +34,7 @@ export default function DashboardView({ onNavigate }) {
 
   return (
     <div className="dashboard">
+      <div className="dashboard-bg" aria-hidden="true" />
       <div className="dashboard-header">
         <h1>Dashboard</h1>
         <p>Your smart fridge at a glance</p>
