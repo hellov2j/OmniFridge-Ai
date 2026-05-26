@@ -4,6 +4,7 @@ import { useGemini } from '../hooks/useGemini';
 import { useLocalDetection } from '../hooks/useLocalDetection';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { CATEGORIES, UNITS, MS_PER_DAY } from '../utils/constants';
+import { Html5Qrcode } from 'html5-qrcode';
 import './ScanView.css';
 
 export default function ScanView() {
@@ -260,48 +261,43 @@ export default function ScanView() {
 
   const startBarcodeScanner = async () => {
     try {
-      const { Html5Qrcode } = await import('html5-qrcode');
-
-      // Wait for container to render
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-      const container = barcodeContainerRef.current;
-      if (!container) return;
-
-      // Clear any existing content
-      container.innerHTML = '';
-
-      const readerId = 'barcode-reader-' + Date.now();
-      const readerDiv = document.createElement('div');
-      readerDiv.id = readerId;
-      container.appendChild(readerDiv);
-
-      const scanner = new Html5Qrcode(readerId);
-      barcodeReaderRef.current = scanner;
+      setWebcamError(null);
       setBarcodeScanning(true);
 
-      await scanner.start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 150 },
-          aspectRatio: 1.5,
-        },
-        async (decodedText) => {
-          // Barcode detected — stop scanning and look up
-          await scanner.stop();
-          setBarcodeScanning(false);
-          lookupBarcode(decodedText);
-        },
-        () => {} // ignore scan failures (normal during scanning)
-      );
+      // Wait for React to render the #barcode-reader div
+      await new Promise(r => setTimeout(r, 50));
+
+      const readerId = 'barcode-reader';
+      const scanner = new Html5Qrcode(readerId);
+      barcodeReaderRef.current = scanner;
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 150 },
+        aspectRatio: 1.5,
+      };
+
+      const onScan = async (decodedText) => {
+        if (barcodeReaderRef.current) {
+          try { await barcodeReaderRef.current.stop(); } catch(e){}
+        }
+        setBarcodeScanning(false);
+        lookupBarcode(decodedText);
+      };
+
+      try {
+        await scanner.start({ facingMode: 'environment' }, config, onScan, () => {});
+      } catch (err) {
+        console.warn('Environment camera failed, trying user camera...', err);
+        await scanner.start({ facingMode: 'user' }, config, onScan, () => {});
+      }
     } catch (err) {
       console.error('Barcode scanner error:', err);
       setBarcodeScanning(false);
       setWebcamError(
-        err.name === 'NotAllowedError'
+        err?.name === 'NotAllowedError'
           ? 'Camera permission denied for barcode scanner.'
-          : `Barcode scanner error: ${err.message}`
+          : `Barcode scanner error: ${err?.message || err}`
       );
     }
   };
@@ -309,10 +305,8 @@ export default function ScanView() {
   const stopBarcodeScanner = async () => {
     if (barcodeReaderRef.current) {
       try {
-        const state = barcodeReaderRef.current.getState?.();
-        if (state === 2) { // SCANNING state
-          await barcodeReaderRef.current.stop();
-        }
+        await barcodeReaderRef.current.stop();
+        await barcodeReaderRef.current.clear();
       } catch (e) {
         // Ignore errors during cleanup
       }
@@ -578,13 +572,14 @@ export default function ScanView() {
           {/* Barcode Tab */}
           {activeTab === 'barcode' && (
             <div className="barcode-section glass-panel">
-              <div className="barcode-scanner-area" ref={barcodeContainerRef}>
+              <div className="barcode-scanner-area">
                 {!barcodeScanning && !barcodeProduct && (
                   <div className="webcam-preview-placeholder">
                     <span>📊</span>
                     <span>Click Start Scanner to scan a barcode</span>
                   </div>
                 )}
+                <div id="barcode-reader" style={{ width: '100%', display: barcodeScanning ? 'block' : 'none' }}></div>
               </div>
 
               <div className="webcam-controls">
