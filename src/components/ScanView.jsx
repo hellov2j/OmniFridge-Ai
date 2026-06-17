@@ -7,6 +7,10 @@ import { CATEGORIES, UNITS, MS_PER_DAY } from '../utils/constants';
 import { Html5Qrcode } from 'html5-qrcode';
 import './ScanView.css';
 
+// Scan intervals in ms — local TF.js is fast; cloud needs more time
+const SCAN_INTERVAL_LOCAL = 3000;
+const SCAN_INTERVAL_CLOUD = 5000;
+
 export default function ScanView() {
   const [activeTab, setActiveTab] = useState('webcam');
   const [detectedItems, setDetectedItems] = useState([]);
@@ -15,6 +19,11 @@ export default function ScanView() {
   const [dragOver, setDragOver] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
   const [facingMode, setFacingMode] = useState('user');
+  // Continuous scanning state
+  const [continuousScan, setContinuousScan] = useState(true);
+  const [scanPaused, setScanPaused] = useState(false);
+  const [scanCount, setScanCount] = useState(0);
+  const [lastScanTime, setLastScanTime] = useState(null);
   const [webcamError, setWebcamError] = useState(null);
   // Detection mode: 'local' (offline TF.js) or 'cloud' (Gemini API / demo)
   const [detectionMode, setDetectionMode] = useState(() =>
@@ -37,6 +46,8 @@ export default function ScanView() {
   const receiptInputRef = useRef(null);
   const canvasRef = useRef(null);
   const captureRetryRef = useRef(0);
+  const scanIntervalRef = useRef(null);
+  const isScanningRef = useRef(false); // guard against overlapping scans
 
   const { addItem, addItems } = useInventory();
   const {
@@ -73,11 +84,15 @@ export default function ScanView() {
     localStorage.setItem('smartfridge_detection_mode', detectionMode);
   }, [detectionMode]);
 
-  // Cleanup webcam on unmount
+  // Cleanup webcam + continuous scan on unmount
   useEffect(() => {
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
       }
       stopBarcodeScanner();
     };
@@ -100,6 +115,8 @@ export default function ScanView() {
       setCapturedImage(null);
       setWebcamActive(true);
       setWebcamError(null);
+      setScanCount(0);
+      setLastScanTime(null);
       clearError();
 
       // Wait for React to render the <video> element before assigning stream
@@ -123,6 +140,12 @@ export default function ScanView() {
   };
 
   const stopWebcam = () => {
+    // Stop continuous scanning
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    isScanningRef.current = false;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -138,6 +161,108 @@ export default function ScanView() {
     startWebcam(newMode);
   };
 
+  // Grab a frame from the video without stopping the camera
+  const grabFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return null;
+
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+
+    if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 100) return null;
+    return dataUrl;
+  }, []);
+
+  // Merge newly detected items into existing list (no duplicates by name)
+  const mergeDetectedItems = useCallback((existing, newItems) => {
+    const merged = [...existing];
+    for (const item of newItems) {
+      const existingIdx = merged.findIndex(
+        e => e.name.toLowerCase() === item.name.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        // Update confidence if the new detection is higher
+        if (item.confidence && (!merged[existingIdx].confidence || item.confidence > merged[existingIdx].confidence)) {
+          merged[existingIdx] = { ...merged[existingIdx], confidence: item.confidence };
+        }
+      } else {
+        merged.push(item);
+      }
+    }
+    return merged;
+  }, []);
+
+  // Run one cycle of continuous detection
+  const runContinuousScan = useCallback(async () => {
+    if (isScanningRef.current) return; // skip if previous scan still running
+    isScanningRef.current = true;
+
+    try {
+      const frame = grabFrame();
+      if (!frame) return;
+
+      let results;
+      if (detectionMode === 'local') {
+        results = await localDetect(frame);
+      } else {
+        results = await detectFood(frame);
+      }
+
+      if (results && results.length > 0) {
+        const items = results.map(r => ({
+          name: r.name,
+          category: r.category || 'other',
+          quantity: 1,
+          unit: r.suggestedUnit || 'pieces',
+          expiryDate: new Date(Date.now() + (r.estimatedShelfLifeDays || 7) * MS_PER_DAY).toISOString().split('T')[0],
+          shelfLife: r.estimatedShelfLifeDays || 7,
+          confidence: r.confidence || null,
+        }));
+        setDetectedItems(prev => mergeDetectedItems(prev, items));
+      }
+
+      setScanCount(c => c + 1);
+      setLastScanTime(new Date());
+    } finally {
+      isScanningRef.current = false;
+    }
+  }, [grabFrame, mergeDetectedItems, detectionMode, localDetect, detectFood]);
+
+  // Start / stop the continuous scan interval when webcam and toggle state change
+  useEffect(() => {
+    if (webcamActive && continuousScan && !scanPaused && activeTab === 'webcam') {
+      // Clear any existing interval
+      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+
+      const interval = detectionMode === 'local' ? SCAN_INTERVAL_LOCAL : SCAN_INTERVAL_CLOUD;
+
+      // Fire one scan immediately after a short delay for camera warmup
+      const warmupTimer = setTimeout(() => {
+        runContinuousScan();
+      }, 1500);
+
+      scanIntervalRef.current = setInterval(runContinuousScan, interval);
+
+      return () => {
+        clearTimeout(warmupTimer);
+        if (scanIntervalRef.current) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
+        }
+      };
+    } else {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+    }
+  }, [webcamActive, continuousScan, scanPaused, activeTab, detectionMode, runContinuousScan]);
+
+  // Legacy single-capture (kept as fallback when continuous mode is off)
   const captureFrame = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -438,7 +563,7 @@ export default function ScanView() {
         <div>
           {activeTab === 'webcam' && (
             <div className="webcam-section glass-panel">
-              <div className="webcam-preview">
+              <div className={`webcam-preview ${webcamActive && continuousScan && !scanPaused ? 'continuous-active' : ''}`}>
                 <video
                   ref={videoRef}
                   autoPlay
@@ -446,8 +571,25 @@ export default function ScanView() {
                   muted
                   style={{ display: webcamActive && !capturedImage ? 'block' : 'none' }}
                 />
+                {webcamActive && !capturedImage && continuousScan && !scanPaused && (
+                  <div className="webcam-scanning-ring continuous" />
+                )}
                 {webcamActive && !capturedImage && detecting && (
-                  <div className="webcam-scanning-ring" />
+                  <div className="webcam-scan-flash" />
+                )}
+                {webcamActive && !capturedImage && continuousScan && !scanPaused && (
+                  <div className="webcam-live-badge">
+                    <span className="live-dot" />
+                    LIVE TRACKING
+                  </div>
+                )}
+                {webcamActive && !capturedImage && scanCount > 0 && (
+                  <div className="webcam-scan-counter">
+                    🔍 {scanCount} scan{scanCount !== 1 ? 's' : ''}
+                    {lastScanTime && (
+                      <span className="scan-time"> · {lastScanTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    )}
+                  </div>
                 )}
                 {capturedImage && (
                   <img src={capturedImage} alt="Captured" />
@@ -455,11 +597,40 @@ export default function ScanView() {
                 {!webcamActive && !capturedImage && (
                   <div className="webcam-preview-placeholder">
                     <span>📷</span>
-                    <span>Click Start Camera to begin</span>
+                    <span>Click Start Camera to begin live tracking</span>
                   </div>
                 )}
               </div>
               <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+              {/* Continuous scan toggle */}
+              {webcamActive && (
+                <div className="continuous-scan-bar">
+                  <label className="continuous-toggle">
+                    <input
+                      type="checkbox"
+                      checked={continuousScan}
+                      onChange={(e) => { setContinuousScan(e.target.checked); setScanPaused(false); }}
+                    />
+                    <span className="toggle-slider" />
+                    <span className="toggle-label">Continuous Tracking</span>
+                  </label>
+                  {continuousScan && (
+                    <button
+                      className={`btn btn-sm ${scanPaused ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => setScanPaused(p => !p)}
+                    >
+                      {scanPaused ? '▶ Resume' : '⏸ Pause'}
+                    </button>
+                  )}
+                  <span className="scan-interval-hint">
+                    {continuousScan
+                      ? `Scanning every ${detectionMode === 'local' ? '3' : '5'}s`
+                      : 'Manual capture mode'}
+                  </span>
+                </div>
+              )}
+
               <div className="webcam-controls">
                 {!webcamActive && !capturedImage && (
                   <button className="btn btn-primary" onClick={startWebcam}>
@@ -468,14 +639,21 @@ export default function ScanView() {
                 )}
                 {webcamActive && (
                   <>
-                    <button className="btn btn-primary" onClick={captureFrame} disabled={detecting}>
-                      📸 Capture & Scan
-                    </button>
+                    {!continuousScan && (
+                      <button className="btn btn-primary" onClick={captureFrame} disabled={detecting}>
+                        📸 Capture & Scan
+                      </button>
+                    )}
+                    {continuousScan && (
+                      <button className="btn btn-primary" onClick={() => { setDetectedItems([]); setScanCount(0); }}>
+                        🗑️ Clear Results
+                      </button>
+                    )}
                     <button className="btn btn-ghost btn-switch-camera" onClick={switchCamera} title="Switch Camera">
                       🔄 Flip
                     </button>
                     <button className="btn btn-ghost" onClick={stopWebcam}>
-                      Stop
+                      ⏹ Stop
                     </button>
                   </>
                 )}
