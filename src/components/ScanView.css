@@ -420,6 +420,28 @@
   gap: var(--space-sm);
 }
 
+/* Inline scanning indicator shown next to heading during continuous scan */
+.inline-scanning-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 3px 10px;
+  background: var(--accent-primary-dim);
+  border-radius: 100px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--accent-primary);
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.inline-scanning-badge .detecting-spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  margin-bottom: 0;
+}
+
 .detected-list {
   display: flex;
   flex-direction: column;

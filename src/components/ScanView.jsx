@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { useGemini } from '../hooks/useGemini';
 import { useLocalDetection } from '../hooks/useLocalDetection';
+import { useAdvancedDetection } from '../hooks/useAdvancedDetection';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { CATEGORIES, UNITS, MS_PER_DAY } from '../utils/constants';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -9,6 +10,7 @@ import './ScanView.css';
 
 // Scan intervals in ms — local TF.js is fast; cloud needs more time
 const SCAN_INTERVAL_LOCAL = 3000;
+const SCAN_INTERVAL_ADVANCED = 6000;
 const SCAN_INTERVAL_CLOUD = 5000;
 
 export default function ScanView() {
@@ -68,6 +70,15 @@ export default function ScanView() {
     isModelLoaded,
   } = useLocalDetection();
   const {
+    detectFromImage: advancedDetect,
+    detecting: advancedDetecting,
+    modelLoading: advancedModelLoading,
+    loadProgress: advancedLoadProgress,
+    error: advancedError,
+    clearError: clearAdvancedError,
+    isModelLoaded: isAdvancedModelLoaded,
+  } = useAdvancedDetection();
+  const {
     product: barcodeProduct,
     loading: barcodeLoading,
     error: barcodeError,
@@ -75,9 +86,15 @@ export default function ScanView() {
     clearProduct,
   } = useBarcodeScanner();
 
-  const detecting = detectionMode === 'local' ? localDetecting : geminiDetecting;
-  const error = detectionMode === 'local' ? localError : geminiError;
-  const clearError = detectionMode === 'local' ? clearLocalError : clearGeminiError;
+  const detecting = detectionMode === 'local' ? localDetecting
+    : detectionMode === 'advanced' ? advancedDetecting
+    : geminiDetecting;
+  const error = detectionMode === 'local' ? localError
+    : detectionMode === 'advanced' ? advancedError
+    : geminiError;
+  const clearError = detectionMode === 'local' ? clearLocalError
+    : detectionMode === 'advanced' ? clearAdvancedError
+    : clearGeminiError;
 
   // Persist detection mode
   useEffect(() => {
@@ -109,7 +126,7 @@ export default function ScanView() {
     const mode = facing || facingMode;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: mode }
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: mode }
       });
       streamRef.current = stream;
       setCapturedImage(null);
@@ -171,7 +188,7 @@ export default function ScanView() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 100) return null;
     return dataUrl;
@@ -208,6 +225,8 @@ export default function ScanView() {
       let results;
       if (detectionMode === 'local') {
         results = await localDetect(frame);
+      } else if (detectionMode === 'advanced') {
+        results = await advancedDetect(frame);
       } else {
         results = await detectFood(frame);
       }
@@ -216,11 +235,11 @@ export default function ScanView() {
         const items = results.map(r => ({
           name: r.name,
           category: r.category || 'other',
-          quantity: 1,
+          quantity: r.quantity || 1,
           unit: r.suggestedUnit || 'pieces',
           expiryDate: new Date(Date.now() + (r.estimatedShelfLifeDays || 7) * MS_PER_DAY).toISOString().split('T')[0],
           shelfLife: r.estimatedShelfLifeDays || 7,
-          confidence: r.confidence || null,
+          confidence: r.confidence ? Math.round(r.confidence * 100) : (r.confidence === undefined ? null : r.confidence),
         }));
         setDetectedItems(prev => mergeDetectedItems(prev, items));
       }
@@ -230,7 +249,7 @@ export default function ScanView() {
     } finally {
       isScanningRef.current = false;
     }
-  }, [grabFrame, mergeDetectedItems, detectionMode, localDetect, detectFood]);
+  }, [grabFrame, mergeDetectedItems, detectionMode, localDetect, advancedDetect, detectFood]);
 
   // Start / stop the continuous scan interval when webcam and toggle state change
   useEffect(() => {
@@ -238,7 +257,9 @@ export default function ScanView() {
       // Clear any existing interval
       if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
-      const interval = detectionMode === 'local' ? SCAN_INTERVAL_LOCAL : SCAN_INTERVAL_CLOUD;
+      const interval = detectionMode === 'local' ? SCAN_INTERVAL_LOCAL
+        : detectionMode === 'advanced' ? SCAN_INTERVAL_ADVANCED
+        : SCAN_INTERVAL_CLOUD;
 
       // Fire one scan immediately after a short delay for camera warmup
       const warmupTimer = setTimeout(() => {
@@ -277,7 +298,7 @@ export default function ScanView() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 100) {
       if (captureRetryRef.current < 5) {
@@ -343,6 +364,8 @@ export default function ScanView() {
     let results;
     if (detectionMode === 'local') {
       results = await localDetect(imageData);
+    } else if (detectionMode === 'advanced') {
+      results = await advancedDetect(imageData);
     } else {
       results = await detectFood(imageData);
     }
@@ -351,11 +374,11 @@ export default function ScanView() {
       const items = results.map(r => ({
         name: r.name,
         category: r.category || 'other',
-        quantity: 1,
+        quantity: r.quantity || 1,
         unit: r.suggestedUnit || 'pieces',
         expiryDate: new Date(Date.now() + (r.estimatedShelfLifeDays || 7) * MS_PER_DAY).toISOString().split('T')[0],
         shelfLife: r.estimatedShelfLifeDays || 7,
-        confidence: r.confidence || null,
+        confidence: r.confidence ? Math.round(r.confidence * 100) : (r.confidence === undefined ? null : r.confidence),
       }));
       setDetectedItems(items);
     }
@@ -492,7 +515,7 @@ export default function ScanView() {
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
-  const isProcessing = detecting || parsingReceipt || modelLoading;
+  const isProcessing = detecting || parsingReceipt || modelLoading || advancedModelLoading;
 
   return (
     <div className="scan-view">
@@ -506,18 +529,36 @@ export default function ScanView() {
           <button
             className={`detection-mode-btn ${detectionMode === 'local' ? 'active' : ''}`}
             onClick={() => { setDetectionMode('local'); clearError(); }}
+            title="Fast, lightweight — detects ~14 food types"
           >
-            🧠 Offline (TF.js)
+            🧠 Basic (TF.js)
+          </button>
+          <button
+            className={`detection-mode-btn ${detectionMode === 'advanced' ? 'active' : ''}`}
+            onClick={() => { setDetectionMode('advanced'); clearError(); }}
+            title="CLIP AI — identifies 150+ food items offline"
+          >
+            🔬 Advanced (CLIP)
           </button>
           <button
             className={`detection-mode-btn ${detectionMode === 'cloud' ? 'active' : ''}`}
             onClick={() => { setDetectionMode('cloud'); clearError(); }}
+            title="Most accurate — requires API key & internet"
           >
             ☁️ Cloud (Gemini)
           </button>
           {detectionMode === 'local' && (
             <span className="detection-mode-status">
               {modelLoading ? '⏳ Loading model...' : isModelLoaded ? '✅ Model ready' : '📦 Model will load on first scan'}
+            </span>
+          )}
+          {detectionMode === 'advanced' && (
+            <span className="detection-mode-status">
+              {advancedModelLoading
+                ? `⏳ Downloading model... ${advancedLoadProgress}%`
+                : isAdvancedModelLoaded
+                  ? '✅ CLIP ready (150+ items)'
+                  : '📦 ~150 MB download on first use (cached after)'}
             </span>
           )}
         </div>
@@ -625,7 +666,7 @@ export default function ScanView() {
                   )}
                   <span className="scan-interval-hint">
                     {continuousScan
-                      ? `Scanning every ${detectionMode === 'local' ? '3' : '5'}s`
+                      ? `Scanning every ${detectionMode === 'local' ? '3' : detectionMode === 'advanced' ? '6' : '5'}s`
                       : 'Manual capture mode'}
                   </span>
                 </div>
@@ -922,33 +963,49 @@ export default function ScanView() {
         {/* Right: Detected Items (not shown for barcode/manual tabs) */}
         {activeTab !== 'barcode' && (
           <div className="detected-section glass-panel">
-            {isProcessing ? (
+            {/* Show full spinner overlay ONLY for one-shot operations (model load, receipt parse, single capture).
+                During continuous webcam scanning, items stay visible with a small inline indicator. */}
+            {isProcessing && !(webcamActive && continuousScan && detectedItems.length > 0) ? (
             <div className="detecting-overlay">
                 <div className="detecting-spinner" />
                 <div className="detecting-text">
                   {modelLoading
                     ? 'Loading AI model (~5MB)...'
-                    : parsingReceipt
-                      ? 'Parsing receipt items...'
-                      : (detectionMode === 'cloud' && geminiRetryStatus)
-                        ? geminiRetryStatus
-                        : 'Analyzing image with AI...'}
+                    : advancedModelLoading
+                      ? `Loading CLIP model... ${advancedLoadProgress}%`
+                      : parsingReceipt
+                        ? 'Parsing receipt items...'
+                        : (detectionMode === 'cloud' && geminiRetryStatus)
+                          ? geminiRetryStatus
+                          : 'Analyzing image with AI...'}
                 </div>
                 <div className="detecting-text text-muted" style={{ marginTop: '4px', fontSize: '0.8rem' }}>
                   {modelLoading
                     ? 'First load only — cached for next time'
-                    : parsingReceipt
-                      ? 'Extracting items, quantities, and prices'
-                      : (detectionMode === 'cloud' && geminiRetryStatus)
-                        ? 'Auto-switching models to avoid rate limits'
-                        : detectionMode === 'local'
-                          ? 'Running TensorFlow.js locally'
-                          : 'Identifying food items'}
+                    : advancedModelLoading
+                      ? 'First download only — cached in browser after'
+                      : parsingReceipt
+                        ? 'Extracting items, quantities, and prices'
+                        : (detectionMode === 'cloud' && geminiRetryStatus)
+                          ? 'Auto-switching models to avoid rate limits'
+                          : detectionMode === 'local'
+                            ? 'Running TensorFlow.js locally'
+                            : detectionMode === 'advanced'
+                              ? 'Running CLIP classification'
+                              : 'Identifying food items'}
                 </div>
               </div>
             ) : detectedItems.length > 0 ? (
               <>
-                <h3>🔍 Detected Items ({detectedItems.length})</h3>
+                <h3>
+                  🔍 Detected Items ({detectedItems.length})
+                  {webcamActive && continuousScan && detecting && (
+                    <span className="inline-scanning-badge">
+                      <span className="detecting-spinner" style={{ width: 14, height: 14 }} />
+                      scanning…
+                    </span>
+                  )}
+                </h3>
                 <div className="detected-list">
                   {detectedItems.map((item, i) => (
                     <div key={i} className="detected-item">

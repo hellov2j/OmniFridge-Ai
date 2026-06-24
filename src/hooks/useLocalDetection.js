@@ -1,28 +1,37 @@
 import { useState, useRef, useCallback } from 'react';
 
 // ── COCO-SSD food label → category + shelf life mapping ─────────────
+// COCO has 12 food/drink classes – map every single one
 const FOOD_MAP = {
-  banana:    { category: 'fruit',     shelfLife: 5,  unit: 'pieces' },
-  apple:     { category: 'fruit',     shelfLife: 14, unit: 'pieces' },
-  orange:    { category: 'fruit',     shelfLife: 10, unit: 'pieces' },
-  broccoli:  { category: 'vegetable', shelfLife: 5,  unit: 'pieces' },
-  carrot:    { category: 'vegetable', shelfLife: 14, unit: 'pieces' },
-  sandwich:  { category: 'grain',     shelfLife: 2,  unit: 'pieces' },
-  pizza:     { category: 'grain',     shelfLife: 3,  unit: 'pieces' },
-  donut:     { category: 'snack',     shelfLife: 3,  unit: 'pieces' },
-  cake:      { category: 'snack',     shelfLife: 4,  unit: 'pieces' },
-  'hot dog': { category: 'meat',      shelfLife: 5,  unit: 'pieces' },
+  banana:    { category: 'fruit',     shelfLife: 5,  unit: 'pieces', displayName: 'Banana' },
+  apple:     { category: 'fruit',     shelfLife: 14, unit: 'pieces', displayName: 'Apple' },
+  orange:    { category: 'fruit',     shelfLife: 10, unit: 'pieces', displayName: 'Orange' },
+  broccoli:  { category: 'vegetable', shelfLife: 5,  unit: 'pieces', displayName: 'Broccoli' },
+  carrot:    { category: 'vegetable', shelfLife: 14, unit: 'pieces', displayName: 'Carrot' },
+  sandwich:  { category: 'grain',     shelfLife: 2,  unit: 'pieces', displayName: 'Sandwich' },
+  pizza:     { category: 'grain',     shelfLife: 3,  unit: 'slices', displayName: 'Pizza' },
+  donut:     { category: 'snack',     shelfLife: 3,  unit: 'pieces', displayName: 'Donut' },
+  cake:      { category: 'snack',     shelfLife: 4,  unit: 'pieces', displayName: 'Cake' },
+  'hot dog': { category: 'meat',      shelfLife: 5,  unit: 'pieces', displayName: 'Hot Dog' },
 };
 
-// Non-food items that COCO detects but we still show as "kitchen items"
+// Non-food items from COCO that are still useful as kitchen/beverage items
 const KITCHEN_MAP = {
-  bottle:       { category: 'beverage',  shelfLife: 30, unit: 'bottles' },
-  'wine glass': { category: 'beverage',  shelfLife: 5,  unit: 'pieces' },
-  cup:          { category: 'beverage',  shelfLife: 1,  unit: 'pieces' },
-  bowl:         { category: 'other',     shelfLife: 3,  unit: 'pieces' },
+  bottle:       { category: 'beverage',  shelfLife: 30, unit: 'bottles', displayName: 'Bottle' },
+  'wine glass': { category: 'beverage',  shelfLife: 5,  unit: 'pieces',  displayName: 'Wine Glass' },
+  cup:          { category: 'beverage',  shelfLife: 1,  unit: 'pieces',  displayName: 'Cup' },
+  bowl:         { category: 'other',     shelfLife: 3,  unit: 'pieces',  displayName: 'Bowl (food)' },
+  spoon:        { category: 'other',     shelfLife: 999, unit: 'pieces', displayName: 'Spoon' },
+  knife:        { category: 'other',     shelfLife: 999, unit: 'pieces', displayName: 'Knife' },
+  fork:         { category: 'other',     shelfLife: 999, unit: 'pieces', displayName: 'Fork' },
+  'dining table': { category: 'other',   shelfLife: 999, unit: 'pieces', displayName: 'Dining Table' },
 };
 
-const ALL_LABELS = { ...FOOD_MAP, ...KITCHEN_MAP };
+// Only show actual food + beverage items by default; skip utensils/furniture
+const FOOD_LABELS = { ...FOOD_MAP, ...KITCHEN_MAP };
+// Labels to completely ignore (utensils, furniture — they clutter results)
+const IGNORE_LABELS = new Set(['spoon', 'knife', 'fork', 'dining table']);
+const ALL_LABELS = FOOD_LABELS;
 
 /**
  * Hook for offline object detection using TensorFlow.js COCO-SSD.
@@ -45,8 +54,9 @@ export function useLocalDetection() {
       const tf = await import('@tensorflow/tfjs');
       const cocoSsd = await import('@tensorflow-models/coco-ssd');
       
-      // Use the lightweight 'lite_mobilenet_v2' base for faster load
-      const model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      // Use the full 'mobilenet_v2' base for significantly better accuracy
+      // (~5 MB larger than lite but dramatically fewer false negatives)
+      const model = await cocoSsd.load({ base: 'mobilenet_v2' });
       modelRef.current = model;
       return model;
     } catch (err) {
@@ -83,29 +93,40 @@ export function useLocalDetection() {
         });
       }
 
-      // Run detection
-      const predictions = await model.detect(element, 20, 0.3);
+      // Run detection — higher maxDetections catches more items in cluttered scenes
+      // Confidence threshold 0.4 balances recall vs precision (was 0.3 → too noisy)
+      const predictions = await model.detect(element, 30, 0.4);
 
-      // Filter to food/kitchen items and deduplicate
-      const seen = new Set();
-      const results = [];
+      // Filter to food/kitchen items, deduplicate, keep highest-confidence per label
+      const bestByLabel = new Map();
 
       for (const pred of predictions) {
         const label = pred.class.toLowerCase();
         const mapping = ALL_LABELS[label];
         if (!mapping) continue; // Skip non-food items (person, car, etc.)
-        if (seen.has(label)) continue; // Deduplicate
-        seen.add(label);
+        if (IGNORE_LABELS.has(label)) continue; // Skip utensils / furniture
 
+        const existing = bestByLabel.get(label);
+        if (!existing || pred.score > existing.score) {
+          bestByLabel.set(label, pred);
+        }
+      }
+
+      const results = [];
+      for (const [label, pred] of bestByLabel) {
+        const mapping = ALL_LABELS[label];
         results.push({
-          name: label.charAt(0).toUpperCase() + label.slice(1),
+          name: mapping.displayName || (label.charAt(0).toUpperCase() + label.slice(1)),
           category: mapping.category,
           estimatedShelfLifeDays: mapping.shelfLife,
           suggestedUnit: mapping.unit,
-          confidence: Math.round(pred.score * 100),
+          confidence: pred.score,
           bbox: pred.bbox, // [x, y, width, height] for drawing boxes
         });
       }
+
+      // Sort by confidence descending so the most certain items appear first
+      results.sort((a, b) => b.confidence - a.confidence);
 
       if (results.length === 0) {
         setError('No food items detected. Try a clearer image with visible food.');

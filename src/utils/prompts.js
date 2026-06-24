@@ -1,20 +1,60 @@
-export const FOOD_DETECTION_PROMPT = `You are a smart fridge AI assistant. Analyze this image of food items and identify every food item you can see.
+export const FOOD_DETECTION_PROMPT = `You are an expert food identification AI for a smart fridge application. Your job is to carefully analyze this image and identify EVERY food and beverage item visible.
 
 Return ONLY a valid JSON array (no markdown, no code fences, no explanation) with objects in this exact format:
 [
   {
     "name": "Item Name",
-    "category": "dairy|vegetable|fruit|meat|grain|beverage|condiment|snack|other",
+    "category": "dairy|vegetable|fruit|meat|grain|beverage|condiment|snack|frozen|seafood|other",
     "estimatedShelfLifeDays": 7,
-    "suggestedUnit": "pieces|liters|kg|grams|packs|bottles|cans|dozen"
+    "suggestedUnit": "pieces|liters|kg|grams|packs|bottles|cans|dozen|bunches",
+    "confidence": 0.85,
+    "quantity": 1
   }
 ]
 
-Rules:
-- Be specific: "whole milk" not just "milk", "red bell pepper" not just "pepper"
-- Estimate realistic shelf life in days from today
-- If you cannot identify an item clearly, skip it
-- Return an empty array [] if no food items are visible
+IDENTIFICATION RULES:
+1. Be specific and descriptive:
+   - "Fuji apple" not "apple", "whole milk 1L carton" not "milk", "red bell pepper" not "pepper"
+   - Include brand names if visible on packaging (e.g., "Amul butter", "Tropicana orange juice")
+   - Distinguish between variants: "Greek yogurt" vs "regular yogurt", "brown eggs" vs "white eggs"
+
+2. Count items carefully:
+   - If you see 3 bananas, set quantity to 3
+   - If you see a bunch of grapes, quantity=1, unit="bunches"
+   - If items are in a multi-pack (e.g., 6-pack of water), report the pack as 1 unit with the pack size in the name
+
+3. Detect packaged / processed foods:
+   - Read text/labels on packaging when visible (brand, product name, weight)
+   - Identify canned goods, boxed items, bagged products, bottled drinks
+   - Frozen items: estimate shelf life based on frozen storage (typically 30-180 days)
+
+4. Handle tricky cases:
+   - Partially visible items: include them if you're at least 60% confident, set confidence lower
+   - Items behind other items: include if identifiable
+   - Cooked/prepared foods: identify the dish (e.g., "leftover pasta", "cooked rice")
+   - Items in containers: try to identify what's inside (e.g., "soup in container", "leftover curry")
+
+5. Confidence scoring (0.0 to 1.0):
+   - 0.9-1.0: Clearly visible, unambiguous identification
+   - 0.7-0.89: Mostly sure, good visibility
+   - 0.5-0.69: Partially visible or ambiguous, but reasonable guess
+   - Below 0.5: Don't include the item
+
+6. Shelf life estimation:
+   - Fresh produce: 3-14 days depending on item
+   - Dairy: 5-30 days (milk ~7, cheese ~21, yogurt ~14)
+   - Meat/seafood: 2-5 days (raw), 3-4 days (cooked)
+   - Bread/bakery: 3-7 days
+   - Canned/packaged: 30-365 days
+   - Condiments: 30-180 days
+   - Frozen: 30-180 days
+
+7. If the image is blurry, dark, or unclear:
+   - Still try your best to identify items
+   - Use lower confidence scores for uncertain detections
+   - Return whatever you CAN identify rather than an empty array
+
+- Return an empty array [] ONLY if truly no food items are visible at all
 - DO NOT include any text outside the JSON array`;
 
 export const RECIPE_SUGGESTION_PROMPT = (items) => {
